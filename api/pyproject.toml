@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "resumeai"
+version = "0.1.0"
+description = "ResumeAI – Intelligent resume analyzer and job matching platform"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0",
+    "django>=4.2",
+    "djangorestframework>=3.15",
+    "djangorestframework-simplejwt>=5.3",
+    "psycopg2-binary>=2.9",
+    "python-decouple>=3.8",
+    "drf-spectacular>=0.27",
+    "faker>=24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-django>=4.8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+DJANGO_SETTINGS_MODULE = "config.settings.local"
+
+[tool.coverage.run]
+source = ["domain", "application", "infrastructure", "interfaces"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

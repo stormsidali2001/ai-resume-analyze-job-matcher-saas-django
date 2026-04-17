@@ -12,7 +12,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
-from application.common.exceptions import NotFoundError, UnauthorizedError
+from application.common.exceptions import AIAnalysisError, NotFoundError, UnauthorizedError
 from domain.job.exceptions import (
     InvalidJobError,
     JobAlreadyClosedError,
@@ -27,6 +27,9 @@ def custom_exception_handler(exc: Exception, context: dict) -> Response | None:
     response = exception_handler(exc, context)
     if response is not None:
         return response
+
+    if isinstance(exc, AIAnalysisError):
+        return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
     if isinstance(exc, NotFoundError):
         return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)

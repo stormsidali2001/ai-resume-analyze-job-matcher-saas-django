@@ -13,6 +13,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = config("SECRET_KEY", default="insecure-dev-key-replace-in-production")
 
+GEMINI_API_KEY: str = config("GEMINI_API_KEY", default="")
+
 DEBUG = False
 
 ALLOWED_HOSTS: list[str] = []

@@ -116,6 +116,22 @@ export interface JobDTO {
   created_at: string
 }
 
+export interface CreateJobRequest {
+  title: string
+  company: string
+  description: string
+  city: string
+  country: string
+  remote: boolean
+  employment_type: EmploymentType
+  required_experience_months: number
+  salary_range?: {
+    min_salary: number
+    max_salary: number
+    currency: string
+  }
+}
+
 // Match
 export interface Gap {
   gap_type: string

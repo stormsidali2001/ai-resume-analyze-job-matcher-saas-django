@@ -70,3 +70,10 @@ class AddSkillRequestSerializer(serializers.Serializer):
     name = serializers.CharField()
     category = serializers.CharField()
     proficiency_level = serializers.ChoiceField(choices=PROFICIENCY_CHOICES)
+
+
+class ResumeFileUploadSerializer(serializers.Serializer):
+    file = serializers.FileField()
+    email = serializers.EmailField()
+    phone = serializers.CharField()
+    location = serializers.CharField()

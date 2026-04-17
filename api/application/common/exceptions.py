@@ -33,3 +33,10 @@ class UnauthorizedError(ApplicationError):
         super().__init__(
             f"You are not authorised to access {resource} '{resource_id}'."
         )
+
+
+class AIAnalysisError(ApplicationError):
+    """
+    Raised when the AI analysis service fails (network error, quota exceeded,
+    malformed output, etc.). Maps to HTTP 502 Bad Gateway at the interface layer.
+    """

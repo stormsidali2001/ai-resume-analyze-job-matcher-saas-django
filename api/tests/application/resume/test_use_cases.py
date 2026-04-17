@@ -12,11 +12,15 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
-from application.common.exceptions import NotFoundError, UnauthorizedError
+from application.common.exceptions import AIAnalysisError, NotFoundError, UnauthorizedError
 from application.resume.dtos import (
     AddSkillCommand,
     AnalyzeResumeCommand,
     CreateResumeCommand,
+    EducationDTO,
+    ExperienceDTO,
+    ParsedResumeData,
+    SkillDTO,
     UpdateResumeTextCommand,
 )
 from application.resume.use_cases import (
@@ -87,29 +91,58 @@ class TestCreateResumeUseCase:
         defaults.update(overrides)
         return CreateResumeCommand(**defaults)
 
+    def _uc(self, repo=None, ai_parser=None):
+        return CreateResumeUseCase(
+            repo or MagicMock(),
+            ResumeAnalysisService(),
+            ai_parser=ai_parser,
+        )
+
     def test_returns_resume_dto(self):
-        repo = MagicMock()
-        uc = CreateResumeUseCase(repo)
-        dto = uc.execute(self._cmd())
+        dto = self._uc().execute(self._cmd())
         assert dto.candidate_id == "c1"
         assert dto.status == "DRAFT"
-        assert dto.skills == []
 
     def test_repo_save_called_once(self):
         repo = MagicMock()
-        uc = CreateResumeUseCase(repo)
-        uc.execute(self._cmd())
+        self._uc(repo).execute(self._cmd())
         repo.save.assert_called_once()
 
     def test_generated_resume_id_is_nonempty(self):
-        repo = MagicMock()
-        dto = CreateResumeUseCase(repo).execute(self._cmd())
+        dto = self._uc().execute(self._cmd())
         assert dto.resume_id and len(dto.resume_id) > 0
 
     def test_contact_info_mapped_correctly(self):
-        repo = MagicMock()
-        dto = CreateResumeUseCase(repo).execute(self._cmd(email="x@y.com"))
+        dto = self._uc().execute(self._cmd(email="x@y.com"))
         assert dto.contact_info.email == "x@y.com"
+
+    def test_ai_parser_populates_skills_on_create(self):
+        repo = MagicMock()
+        parsed = ParsedResumeData(
+            skills=[SkillDTO(name="Python", category="programming", proficiency_level="expert")],
+            experiences=[],
+            education=[],
+        )
+        ai_parser = MagicMock()
+        ai_parser.parse.return_value = parsed
+
+        dto = self._uc(repo, ai_parser=ai_parser).execute(self._cmd())
+
+        ai_parser.parse.assert_called_once()
+        assert len(dto.skills) == 1
+        assert dto.skills[0].name == "Python"
+
+    def test_ai_parser_error_raises_ai_analysis_error_on_create(self):
+        ai_parser = MagicMock()
+        ai_parser.parse.side_effect = RuntimeError("quota exceeded")
+
+        with pytest.raises(AIAnalysisError):
+            self._uc(ai_parser=ai_parser).execute(self._cmd())
+
+    def test_no_ai_parser_falls_back_to_rule_based(self):
+        dto = self._uc(ai_parser=None).execute(self._cmd())
+        # rule-based with empty known_skills → no skills extracted, but no crash
+        assert isinstance(dto.skills, list)
 
 
 # ============================================================
@@ -243,6 +276,80 @@ class TestAnalyzeResumeUseCase:
         cmd = AnalyzeResumeCommand(resume_id="r1", candidate_id="wrong", known_skills=[])
         with pytest.raises(UnauthorizedError):
             AnalyzeResumeUseCase(repo, service).execute(cmd)
+
+    # -- AI parser path --
+
+    def test_ai_parser_replaces_skills_experiences_education(self):
+        resume = _make_resume()
+        repo = _mock_repo(resume)
+        service = MagicMock(spec=ResumeAnalysisService)
+
+        parsed = ParsedResumeData(
+            skills=[SkillDTO(name="Python", category="programming", proficiency_level="expert")],
+            experiences=[
+                ExperienceDTO(
+                    role="Engineer",
+                    company="Acme",
+                    duration_months=24,
+                    responsibilities=["Built APIs"],
+                )
+            ],
+            education=[
+                EducationDTO(degree="BSc CS", institution="MIT", graduation_year=2019)
+            ],
+        )
+        ai_parser = MagicMock()
+        ai_parser.parse.return_value = parsed
+
+        cmd = AnalyzeResumeCommand(resume_id="r1", candidate_id="c1", known_skills=[])
+        dto = AnalyzeResumeUseCase(repo, service, ai_parser=ai_parser).execute(cmd)
+
+        # AI path: rule-based service should NOT be called
+        service.extract_skills_from_text.assert_not_called()
+        service.enrich_resume.assert_not_called()
+
+        assert len(dto.skills) == 1
+        assert dto.skills[0].name == "Python"
+        assert len(dto.experiences) == 1
+        assert dto.experiences[0].role == "Engineer"
+        assert len(dto.education) == 1
+        assert dto.education[0].degree == "BSc CS"
+
+    def test_ai_parser_wraps_exception_in_ai_analysis_error(self):
+        resume = _make_resume()
+        repo = _mock_repo(resume)
+        service = MagicMock(spec=ResumeAnalysisService)
+
+        ai_parser = MagicMock()
+        ai_parser.parse.side_effect = RuntimeError("Gemini quota exceeded")
+
+        cmd = AnalyzeResumeCommand(resume_id="r1", candidate_id="c1", known_skills=[])
+        with pytest.raises(AIAnalysisError, match="Gemini quota exceeded"):
+            AnalyzeResumeUseCase(repo, service, ai_parser=ai_parser).execute(cmd)
+
+    def test_no_ai_parser_falls_back_to_rule_based(self):
+        resume = _make_resume()
+        repo = _mock_repo(resume)
+        service = MagicMock(spec=ResumeAnalysisService)
+        service.extract_skills_from_text.return_value = []
+
+        cmd = AnalyzeResumeCommand(resume_id="r1", candidate_id="c1", known_skills=["Python"])
+        AnalyzeResumeUseCase(repo, service, ai_parser=None).execute(cmd)
+
+        service.extract_skills_from_text.assert_called_once()
+        service.enrich_resume.assert_called_once()
+
+    def test_ai_parser_repo_save_called(self):
+        resume = _make_resume()
+        repo = _mock_repo(resume)
+        service = MagicMock(spec=ResumeAnalysisService)
+
+        ai_parser = MagicMock()
+        ai_parser.parse.return_value = ParsedResumeData(skills=[], experiences=[], education=[])
+
+        cmd = AnalyzeResumeCommand(resume_id="r1", candidate_id="c1", known_skills=[])
+        AnalyzeResumeUseCase(repo, service, ai_parser=ai_parser).execute(cmd)
+        repo.save.assert_called_once()
 
 
 # ============================================================

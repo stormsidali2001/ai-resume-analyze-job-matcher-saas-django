@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 
-from application.common.exceptions import NotFoundError, UnauthorizedError
+from application.common.exceptions import AIAnalysisError, NotFoundError, UnauthorizedError
 from application.resume.dtos import (
     AnalyzeResumeCommand,
     AddSkillCommand,
@@ -27,7 +27,9 @@ from domain.resume.aggregate import ResumeAggregate
 from domain.resume.exceptions import ResumeNotFoundError
 from domain.resume.repositories import ResumeRepository
 from domain.resume.services import ResumeAnalysisService
-from domain.resume.value_objects import ContactInfo, RawResumeContent
+from domain.resume.value_objects import ContactInfo, Education, Experience, RawResumeContent
+
+from application.resume.ports import AIAnalysisPort
 
 
 # ---------------------------------------------------------------------------
@@ -99,14 +101,23 @@ def _fetch_and_authorize(
 
 class CreateResumeUseCase:
     """
-    Create a new resume for a candidate.
+    Create a new resume for a candidate and immediately analyze it.
 
-    Generates a unique resume_id, builds the aggregate from the command,
-    persists it, and returns the DTO.
+    When an AIAnalysisPort is available it performs a full AI parse
+    (skills + experiences + education). When no parser is configured it
+    falls back to the rule-based ResumeAnalysisService for basic skill
+    extraction from the raw text.
     """
 
-    def __init__(self, repo: ResumeRepository) -> None:
+    def __init__(
+        self,
+        repo: ResumeRepository,
+        analysis_service: ResumeAnalysisService,
+        ai_parser: AIAnalysisPort | None = None,
+    ) -> None:
         self._repo = repo
+        self._service = analysis_service
+        self._ai_parser = ai_parser
 
     def execute(self, cmd: CreateResumeCommand) -> ResumeDTO:
         resume = ResumeAggregate(
@@ -119,6 +130,46 @@ class CreateResumeUseCase:
                 location=cmd.location,
             ),
         )
+
+        if self._ai_parser is not None:
+            try:
+                parsed = self._ai_parser.parse(resume.raw_text.text)
+            except Exception as exc:
+                raise AIAnalysisError(str(exc)) from exc
+
+            skills = [
+                Skill(
+                    name=s.name,
+                    category=s.category,
+                    proficiency_level=s.proficiency_level,
+                )
+                for s in parsed.skills
+            ]
+            experiences = [
+                Experience(
+                    role=e.role,
+                    company=e.company,
+                    duration_months=e.duration_months,
+                    responsibilities=tuple(e.responsibilities),
+                )
+                for e in parsed.experiences
+            ]
+            education = [
+                Education(
+                    degree=ed.degree,
+                    institution=ed.institution,
+                    graduation_year=ed.graduation_year,
+                )
+                for ed in parsed.education
+            ]
+            resume.update_from_parsed_text(skills, experiences, education)
+        else:
+            extracted = self._service.extract_skills_from_text(
+                text=resume.raw_text.text,
+                known_skills=[],
+            )
+            self._service.enrich_resume(resume, extracted)
+
         self._repo.save(resume)
         return _resume_to_dto(resume)
 
@@ -160,25 +211,66 @@ class UpdateResumeTextUseCase:
 
 class AnalyzeResumeUseCase:
     """
-    Run rule-based skill extraction on a resume's raw text and
-    enrich the aggregate with any newly discovered skills.
+    Analyze a resume's raw text to extract structured data.
+
+    When an AIAnalysisPort is provided (Gemini / LangChain), it performs a
+    full parse that bulk-replaces skills, experiences, and education on the
+    aggregate. Without a parser it falls back to the rule-based keyword scan
+    which additively enriches skills only.
     """
 
     def __init__(
         self,
         repo: ResumeRepository,
         analysis_service: ResumeAnalysisService,
+        ai_parser: AIAnalysisPort | None = None,
     ) -> None:
         self._repo = repo
         self._service = analysis_service
+        self._ai_parser = ai_parser
 
     def execute(self, cmd: AnalyzeResumeCommand) -> ResumeDTO:
         resume = _fetch_and_authorize(self._repo, cmd.resume_id, cmd.candidate_id)
-        extracted = self._service.extract_skills_from_text(
-            text=resume.raw_text.text,
-            known_skills=cmd.known_skills,
-        )
-        self._service.enrich_resume(resume, extracted)
+
+        if self._ai_parser is not None:
+            try:
+                parsed = self._ai_parser.parse(resume.raw_text.text)
+            except Exception as exc:
+                raise AIAnalysisError(str(exc)) from exc
+
+            skills = [
+                Skill(
+                    name=s.name,
+                    category=s.category,
+                    proficiency_level=s.proficiency_level,
+                )
+                for s in parsed.skills
+            ]
+            experiences = [
+                Experience(
+                    role=e.role,
+                    company=e.company,
+                    duration_months=e.duration_months,
+                    responsibilities=tuple(e.responsibilities),
+                )
+                for e in parsed.experiences
+            ]
+            education = [
+                Education(
+                    degree=ed.degree,
+                    institution=ed.institution,
+                    graduation_year=ed.graduation_year,
+                )
+                for ed in parsed.education
+            ]
+            resume.update_from_parsed_text(skills, experiences, education)
+        else:
+            extracted = self._service.extract_skills_from_text(
+                text=resume.raw_text.text,
+                known_skills=cmd.known_skills,
+            )
+            self._service.enrich_resume(resume, extracted)
+
         self._repo.save(resume)
         return _resume_to_dto(resume)
 

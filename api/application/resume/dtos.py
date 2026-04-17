@@ -77,6 +77,21 @@ class ResumeDTO(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# AI parsing result
+# ---------------------------------------------------------------------------
+
+
+class ParsedResumeData(BaseModel):
+    """Output model returned by AIAnalysisPort implementations."""
+
+    model_config = ConfigDict(frozen=True)
+
+    skills: list[SkillDTO]
+    experiences: list[ExperienceDTO]
+    education: list[EducationDTO]
+
+
+# ---------------------------------------------------------------------------
 # Commands (input models)
 # ---------------------------------------------------------------------------
 

@@ -10,6 +10,7 @@ from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_sche
 from drf_spectacular.types import OpenApiTypes
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
@@ -20,12 +21,13 @@ from application.resume.dtos import (
     CreateResumeCommand,
     UpdateResumeTextCommand,
 )
-from interfaces.api.dependencies import get_resume_use_cases
+from interfaces.api.dependencies import get_file_parser, get_resume_use_cases
 from interfaces.api.v1.resume.serializers import (
     AddSkillRequestSerializer,
     AnalyzeResumeRequestSerializer,
     CreateResumeRequestSerializer,
     ResumeDTOSerializer,
+    ResumeFileUploadSerializer,
     UpdateResumeTextRequestSerializer,
 )
 
@@ -155,3 +157,37 @@ class ResumeViewSet(ViewSet):
         use_cases = get_resume_use_cases()
         use_cases["archive"].execute(pk, str(request.user.id))
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        summary="Upload resume PDF",
+        description="Upload a PDF file and contact info. Text is extracted and the resume is analyzed immediately.",
+        request=ResumeFileUploadSerializer,
+        responses={201: ResumeDTOSerializer, 400: OpenApiResponse(description="Invalid file or unsupported type")},
+        tags=["Resumes"],
+    )
+    @action(detail=False, methods=["post"], url_path="upload", parser_classes=[MultiPartParser])
+    def upload(self, request: Request) -> Response:
+        ser = ResumeFileUploadSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        uploaded_file = ser.validated_data["file"]
+        file_parser = get_file_parser()
+
+        try:
+            raw_text = file_parser.parse(
+                uploaded_file.read(),
+                uploaded_file.content_type or "application/pdf",
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        cmd = CreateResumeCommand(
+            candidate_id=str(request.user.id),
+            raw_text=raw_text,
+            email=ser.validated_data["email"],
+            phone=ser.validated_data["phone"],
+            location=ser.validated_data["location"],
+        )
+        use_cases = get_resume_use_cases()
+        dto = use_cases["create"].execute(cmd)
+        return Response(ResumeDTOSerializer(dto).data, status=status.HTTP_201_CREATED)

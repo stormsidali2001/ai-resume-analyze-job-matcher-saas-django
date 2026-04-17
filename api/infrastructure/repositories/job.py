@@ -45,3 +45,12 @@ class DjangoJobRepository(JobRepository):
             .filter(status=STATUS_PUBLISHED)
         )
         return [JobMapper.to_aggregate(r) for r in records]
+
+    def list_by_recruiter(self, recruiter_id: str) -> list[JobAggregate]:
+        records = (
+            JobRecord.objects
+            .prefetch_related("required_skills")
+            .filter(recruiter_id=recruiter_id)
+            .order_by("-created_at")
+        )
+        return [JobMapper.to_aggregate(r) for r in records]

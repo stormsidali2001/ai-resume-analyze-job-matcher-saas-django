@@ -5,11 +5,20 @@ ResumeJobMatchingService — pure business logic for scoring a resume
 against a job posting. No AI, no external calls. Deterministic.
 
 Scoring model (total: 100 points):
-    - Skill overlap  : 60 pts  (matched required skills / total required skills)
+    - Skill overlap  : 60 pts  (weighted by category importance + proficiency match)
     - Experience     : 30 pts  (candidate months / required months, capped at 1.0)
-    - Base/contact   : 10 pts  (always awarded when resume has contact info)
+    - Base/contact   : 10 pts  (always awarded when resume has complete contact info)
 
-Gaps and suggestions are generated from the scoring breakdown.
+Skill weighting:
+    Each required skill contributes a weight based on its category
+    (language=3.0 down to methodology=0.5). When the candidate has the skill
+    but at a lower proficiency than required, partial credit is awarded via
+    a proficiency multiplier (1.0 → 0.75 → 0.40 → 0.10 for each level short).
+
+Gap types:
+    - missing_skill    : required skill absent from resume entirely
+    - proficiency_gap  : skill present but candidate level is below required
+    - experience_shortfall : not enough total months of experience
 """
 
 from __future__ import annotations
@@ -17,6 +26,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
+from domain.common.skill_categories import CATEGORY_SCORE_WEIGHT, DEFAULT_WEIGHT
 from domain.common.value_objects import Gap, ImprovementSuggestion, MatchScore, Skill
 from domain.job.aggregate import JobAggregate
 from domain.matching.aggregate import MatchResult
@@ -25,6 +35,45 @@ from domain.resume.aggregate import ResumeAggregate
 _SKILL_WEIGHT = 60
 _EXPERIENCE_WEIGHT = 30
 _BASE_WEIGHT = 10
+
+# Proficiency levels as ordinal values for comparison
+_PROFICIENCY_ORDER: dict[str, int] = {
+    "beginner": 0,
+    "intermediate": 1,
+    "advanced": 2,
+    "expert": 3,
+}
+
+
+def _proficiency_multiplier(required: str, candidate: str) -> float:
+    """
+    Returns a score multiplier (0-1) based on how the candidate's proficiency
+    compares to the required level for a skill.
+
+    Meeting or exceeding the requirement → 1.0 (full credit).
+    Each level short reduces credit substantially.
+    """
+    diff = _PROFICIENCY_ORDER.get(required, 1) - _PROFICIENCY_ORDER.get(candidate, 1)
+    if diff <= 0:
+        return 1.0   # meets or exceeds requirement
+    if diff == 1:
+        return 0.75  # one level short (e.g. advanced required, intermediate has)
+    if diff == 2:
+        return 0.40  # two levels short
+    return 0.10      # three levels short (beginner when expert needed)
+
+
+def _gap_priority(category: str) -> str:
+    """
+    Derive suggestion priority from the category's score weight.
+    High-weight categories (languages, frameworks) produce high-priority gaps.
+    """
+    weight = CATEGORY_SCORE_WEIGHT.get(category, DEFAULT_WEIGHT)
+    if weight >= 2.5:
+        return "high"    # language, framework
+    if weight >= 1.5:
+        return "medium"  # database, cloud, devops, architecture, data-science
+    return "low"          # tooling, testing, methodology
 
 
 class ResumeJobMatchingService:
@@ -35,6 +84,7 @@ class ResumeJobMatchingService:
     This service enforces the core matching invariants:
         - Score is always in [0, 100]
         - Every missing required skill becomes a Gap
+        - Skills present at a lower proficiency than required become a proficiency_gap
         - Experience shortfalls become a Gap with a suggestion
     """
 
@@ -59,7 +109,7 @@ class ResumeJobMatchingService:
         gaps: list[Gap] = []
         suggestions: list[ImprovementSuggestion] = []
 
-        # ── 1. Skill overlap score (0–60) ─────────────────────────────
+        # ── 1. Skill overlap score (0–60, weighted) ───────────────────
         skill_score, skill_gaps, skill_suggestions = self._score_skills(
             resume.skills, job.required_skills
         )
@@ -99,42 +149,77 @@ class ResumeJobMatchingService:
         candidate_skills: list[Skill],
         required_skills: list[Skill],
     ) -> tuple[int, list[Gap], list[ImprovementSuggestion]]:
-        """Returns (score 0-60, gaps, suggestions)."""
+        """
+        Returns (score 0-60, gaps, suggestions).
+
+        Score is computed as a weighted ratio:
+            earned_weight / total_weight * 60
+
+        where each required skill contributes a category weight, and a matched
+        skill is further scaled by the proficiency multiplier.
+        """
         if not required_skills:
-            # No skills required → full marks, no gaps
             return _SKILL_WEIGHT, [], []
 
-        matched = 0
+        total_weight = sum(
+            CATEGORY_SCORE_WEIGHT.get(s.category, DEFAULT_WEIGHT)
+            for s in required_skills
+        )
+        earned_weight = 0.0
         gaps: list[Gap] = []
         suggestions: list[ImprovementSuggestion] = []
 
-        for req_skill in required_skills:
-            if any(cs.matches(req_skill) for cs in candidate_skills):
-                matched += 1
-            else:
-                gaps.append(
-                    Gap(
-                        gap_type="missing_skill",
-                        description=(
-                            f"Required skill '{req_skill.name}' "
-                            f"(category: {req_skill.category}) is not on your resume."
-                        ),
-                    )
-                )
-                suggestions.append(
-                    ImprovementSuggestion(
-                        text=(
-                            f"Add '{req_skill.name}' to your skills. "
-                            f"Consider online courses or personal projects to "
-                            f"demonstrate this capability."
-                        ),
-                        priority="high",
-                        category="skills",
-                    )
-                )
+        for req in required_skills:
+            cat_weight = CATEGORY_SCORE_WEIGHT.get(req.category, DEFAULT_WEIGHT)
+            match = next((cs for cs in candidate_skills if cs.matches(req)), None)
 
-        ratio = matched / len(required_skills)
-        score = round(ratio * _SKILL_WEIGHT)
+            if match is None:
+                # Skill entirely absent from resume
+                gaps.append(Gap(
+                    gap_type="missing_skill",
+                    description=(
+                        f"Required skill '{req.name}' "
+                        f"(category: {req.category}) is not on your resume."
+                    ),
+                ))
+                suggestions.append(ImprovementSuggestion(
+                    text=(
+                        f"Add '{req.name}' to your skills. "
+                        f"Consider online courses or personal projects to "
+                        f"demonstrate this capability."
+                    ),
+                    priority=_gap_priority(req.category),
+                    category="skills",
+                ))
+            else:
+                mult = _proficiency_multiplier(req.proficiency_level, match.proficiency_level)
+                earned_weight += cat_weight * mult
+
+                if mult < 1.0:
+                    # Skill present but below required proficiency
+                    gaps.append(Gap(
+                        gap_type="proficiency_gap",
+                        description=(
+                            f"Your {req.name} level is {match.proficiency_level}; "
+                            f"{req.proficiency_level} is required for this role."
+                        ),
+                    ))
+                    suggestions.append(ImprovementSuggestion(
+                        text=(
+                            f"Deepen your {req.name} expertise from "
+                            f"{match.proficiency_level} to {req.proficiency_level} "
+                            f"through advanced projects, open-source contributions, "
+                            f"or targeted certifications."
+                        ),
+                        priority="medium" if mult >= 0.75 else "high",
+                        category="skills",
+                    ))
+
+        score = (
+            round((earned_weight / total_weight) * _SKILL_WEIGHT)
+            if total_weight > 0
+            else _SKILL_WEIGHT
+        )
         return score, gaps, suggestions
 
     def _score_experience(
@@ -144,7 +229,6 @@ class ResumeJobMatchingService:
     ) -> tuple[int, list[Gap], list[ImprovementSuggestion]]:
         """Returns (score 0-30, gaps, suggestions)."""
         if required_months <= 0:
-            # No experience requirement → full marks
             return _EXPERIENCE_WEIGHT, [], []
 
         ratio = min(candidate_months / required_months, 1.0)
@@ -155,27 +239,23 @@ class ResumeJobMatchingService:
         if candidate_months < required_months:
             shortfall = required_months - candidate_months
             years_short = round(shortfall / 12, 1)
-            gaps.append(
-                Gap(
-                    gap_type="experience_shortfall",
-                    description=(
-                        f"Job requires {required_months} months of experience; "
-                        f"your resume shows {candidate_months} months "
-                        f"(shortfall: ~{years_short} years)."
-                    ),
-                )
-            )
-            suggestions.append(
-                ImprovementSuggestion(
-                    text=(
-                        f"You are approximately {years_short} year(s) short on "
-                        f"required experience. Highlight any freelance, open-source, "
-                        f"or project work that demonstrates relevant hands-on time."
-                    ),
-                    priority="medium",
-                    category="experience",
-                )
-            )
+            gaps.append(Gap(
+                gap_type="experience_shortfall",
+                description=(
+                    f"Job requires {required_months} months of experience; "
+                    f"your resume shows {candidate_months} months "
+                    f"(shortfall: ~{years_short} years)."
+                ),
+            ))
+            suggestions.append(ImprovementSuggestion(
+                text=(
+                    f"You are approximately {years_short} year(s) short on "
+                    f"required experience. Highlight any freelance, open-source, "
+                    f"or project work that demonstrates relevant hands-on time."
+                ),
+                priority="medium",
+                category="experience",
+            ))
 
         return score, gaps, suggestions
 

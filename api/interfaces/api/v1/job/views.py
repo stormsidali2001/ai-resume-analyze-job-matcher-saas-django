@@ -100,6 +100,18 @@ class JobViewSet(ViewSet):
         return Response(JobDTOSerializer(dto).data)
 
     @extend_schema(
+        summary="List my jobs",
+        description="Returns all jobs (any status) created by the authenticated recruiter.",
+        responses={200: JobDTOSerializer(many=True)},
+        tags=["Jobs"],
+    )
+    @action(detail=False, methods=["get"], url_path="mine")
+    def mine(self, request: Request) -> Response:
+        use_cases = get_job_use_cases()
+        dtos = use_cases["list_mine"].execute(recruiter_id=str(request.user.id))
+        return Response(JobDTOSerializer(dtos, many=True).data)
+
+    @extend_schema(
         summary="Add required skill",
         description="Attach a required skill to the job. Authentication required.",
         request=AddSkillToJobRequestSerializer,

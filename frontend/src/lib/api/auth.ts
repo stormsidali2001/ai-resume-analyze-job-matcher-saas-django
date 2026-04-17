@@ -13,4 +13,6 @@ export const authApi = {
   }) => apiClient.post<{ user: AuthUser }>('/api/auth/register', data),
 
   logout: () => apiClient.post<{ ok: boolean }>('/api/auth/logout'),
+
+  me: () => apiClient.get<AuthUser>('/api/auth/me'),
 }

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from application.resume.dtos import SkillDTO
+from application.resume.dtos import ParsedResumeData
 
 
 class FileParserPort(ABC):
@@ -38,18 +38,25 @@ class FileParserPort(ABC):
 
 class AIAnalysisPort(ABC):
     """
-    LangChain-powered skill extraction port (Phase 3+).
-    The rule-based ResumeAnalysisService is used until this is wired up.
+    LangChain-powered resume parsing port.
+    Extracts skills, work experiences, and education from raw resume text.
+    The rule-based ResumeAnalysisService is used as a fallback when no
+    implementation is wired up.
     """
 
     @abstractmethod
-    def extract_skills(self, text: str) -> list[SkillDTO]:
+    def parse(self, text: str) -> ParsedResumeData:
         """
-        Use an AI model to extract structured skills from resume text.
+        Use an AI model to extract structured resume data from raw text.
 
         Args:
             text: Raw resume text.
 
         Returns:
-            List of SkillDTOs identified by the model.
+            ParsedResumeData with skills, experiences, and education.
+
+        Raises:
+            Exception: Any error from the underlying AI service (network,
+                       quota, bad output). The use case wraps these in
+                       AIAnalysisError.
         """

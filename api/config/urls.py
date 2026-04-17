@@ -9,12 +9,13 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from interfaces.api.auth.views import RegisterView
+from interfaces.api.auth.views import ProfileView, RegisterView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     # Auth
     path("api/auth/register/", RegisterView.as_view(), name="auth-register"),
+    path("api/auth/profile/", ProfileView.as_view(), name="auth-profile"),
     path("api/auth/token/", TokenObtainPairView.as_view(), name="token-obtain-pair"),
     path("api/auth/token/refresh/", TokenRefreshView.as_view(), name="token-refresh"),
     # v1 API

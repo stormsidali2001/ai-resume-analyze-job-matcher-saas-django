@@ -179,6 +179,17 @@ class CloseJobUseCase:
         return _job_to_dto(job)
 
 
+class ListRecruiterJobsUseCase:
+    """Return all jobs (any status) belonging to a recruiter."""
+
+    def __init__(self, repo: JobRepository) -> None:
+        self._repo = repo
+
+    def execute(self, recruiter_id: str) -> list[JobDTO]:
+        jobs = self._repo.list_by_recruiter(recruiter_id)
+        return [_job_to_dto(j) for j in jobs]
+
+
 class AddRequiredSkillToJobUseCase:
     """Add a required skill to a job posting."""
 

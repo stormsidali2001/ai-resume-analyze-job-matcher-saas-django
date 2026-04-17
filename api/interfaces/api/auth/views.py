@@ -15,6 +15,19 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from interfaces.api.auth.serializers import RegisterSerializer
 
 
+class ProfileView(APIView):
+    """Return the currently authenticated user's profile."""
+
+    def get(self, request: Request) -> Response:
+        user = request.user
+        return Response({
+            "id": str(user.id),
+            "username": user.username,
+            "email": user.email,
+            "role": user.role,
+        })
+
+
 class RegisterView(APIView):
     permission_classes = [AllowAny]
 

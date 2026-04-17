@@ -17,21 +17,28 @@ async function forward(req: NextRequest, method: string) {
   const proxiedPathWithSlash = proxiedPath.endsWith('/') ? proxiedPath : `${proxiedPath}/`
   const target = `${DJANGO_V1}${proxiedPathWithSlash}${url.search}`
 
+  const contentType = req.headers.get('content-type') ?? ''
+  const isMultipart = contentType.includes('multipart/form-data')
+
   const headers: HeadersInit = {
     Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
+    ...(isMultipart ? { 'Content-Type': contentType } : { 'Content-Type': 'application/json' }),
   }
 
-  const body = ['GET', 'HEAD'].includes(method) ? undefined : await req.text()
+  const body = ['GET', 'HEAD'].includes(method)
+    ? undefined
+    : isMultipart
+      ? await req.arrayBuffer()
+      : await req.text()
 
   const upstream = await fetch(target, { method, headers, body, redirect: 'follow' })
 
   const text = await upstream.text()
-  const contentType = upstream.headers.get('content-type') ?? 'application/json'
+  const responseContentType = upstream.headers.get('content-type') ?? 'application/json'
 
   return new NextResponse(text || null, {
     status: upstream.status,
-    headers: { 'Content-Type': contentType },
+    headers: { 'Content-Type': responseContentType },
   })
 }
 

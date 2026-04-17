@@ -212,7 +212,7 @@ curl -s -X POST $BASE/api/v1/match/ \
 
 ## Seeding demo data
 
-The `seed` management command populates the database with realistic demo users, resumes, and job postings.
+he `seed` management command populates the database with realistic demo users, resumes, and job postings.
 
 ```bash
 # Default: 5 candidates + 3 recruiters

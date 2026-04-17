@@ -38,7 +38,10 @@ class JobDTOSerializer(serializers.Serializer):
     location = LocationSerializer()
     employment_type = serializers.CharField()
     salary_range = SalaryRangeSerializer(allow_null=True)
-    status = serializers.CharField()
+    status = serializers.SerializerMethodField()
+
+    def get_status(self, obj) -> str:
+        return obj.status.lower()
     created_at = serializers.DateTimeField()
 
 

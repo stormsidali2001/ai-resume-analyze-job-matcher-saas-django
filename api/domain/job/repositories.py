@@ -28,3 +28,7 @@ class JobRepository(ABC):
     @abstractmethod
     def list_published(self) -> list[JobAggregate]:
         """Return all jobs currently in PUBLISHED status."""
+
+    @abstractmethod
+    def list_by_recruiter(self, recruiter_id: str) -> list[JobAggregate]:
+        """Return all jobs (any status) belonging to a recruiter."""

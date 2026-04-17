@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter, usePathname } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { LogOut, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { authApi } from '@/lib/api/auth'
@@ -34,13 +35,14 @@ function getBreadcrumb(pathname: string): { parent?: string; current: string } {
 export function Topbar() {
   const router = useRouter()
   const pathname = usePathname()
+  const queryClient = useQueryClient()
   const { data: user } = useCurrentUser()
   const { parent, current } = getBreadcrumb(pathname)
 
   const handleLogout = async () => {
     await authApi.logout()
+    queryClient.clear()
     router.push('/login')
-    router.refresh()
   }
 
   const initials = user?.username?.slice(0, 2).toUpperCase() ?? '?'

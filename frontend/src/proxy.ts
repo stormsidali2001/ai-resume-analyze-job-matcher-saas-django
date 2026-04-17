@@ -1,22 +1,33 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
-const PROTECTED_PREFIXES = ['/dashboard', '/resumes']
+const PUBLIC_PATHS = ['/login', '/register']
 
-export function proxy(req: NextRequest) {
-  const token = req.cookies.get('access_token')?.value
-  const path = req.nextUrl.pathname
+export function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  const token = request.cookies.get('access_token')?.value
 
-  const isProtected = PROTECTED_PREFIXES.some((p) => path.startsWith(p))
+  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))
 
-  if (isProtected && !token) {
-    const loginUrl = new URL('/login', req.url)
-    loginUrl.searchParams.set('from', path)
-    return NextResponse.redirect(loginUrl)
+  // No token → send to login
+  if (!token && !isPublic) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
+  }
+
+  // Already authenticated → don't show login/register
+  if (token && isPublic) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/resumes'
+    return NextResponse.redirect(url)
   }
 
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: ['/((?!_next|api|favicon.ico).*)'],
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)',
+  ],
 }

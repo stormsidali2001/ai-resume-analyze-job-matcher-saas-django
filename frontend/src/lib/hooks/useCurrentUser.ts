@@ -7,7 +7,7 @@ export function useCurrentUser() {
   return useQuery({
     queryKey: ['current-user'],
     queryFn: authApi.me,
-    staleTime: Infinity,
+    staleTime: 5 * 60 * 1000,
     retry: false,
   })
 }

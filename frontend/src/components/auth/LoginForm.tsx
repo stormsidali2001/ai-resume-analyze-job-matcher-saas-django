@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import Link from 'next/link'
 import { FileText, Briefcase } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -51,6 +52,7 @@ const DEMO_ACCOUNTS = [
 
 export function LoginForm() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [serverError, setServerError] = useState('')
   const [demoLoading, setDemoLoading] = useState<string | null>(null)
 
@@ -64,8 +66,8 @@ export function LoginForm() {
     setServerError('')
     try {
       await authApi.login(data.username, data.password)
+      queryClient.clear()
       router.push('/resumes')
-      router.refresh()
     } catch (err) {
       if (err instanceof ApiClientError) {
         setServerError(err.detail)
@@ -80,8 +82,8 @@ export function LoginForm() {
     setDemoLoading(account.username)
     try {
       await authApi.login(account.username, account.password)
+      queryClient.clear()
       router.push(account.redirectTo)
-      router.refresh()
     } catch {
       setServerError(`Demo account unavailable. Run "python manage.py seed" first.`)
     } finally {

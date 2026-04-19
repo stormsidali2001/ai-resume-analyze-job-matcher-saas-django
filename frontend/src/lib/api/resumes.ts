@@ -10,7 +10,10 @@ export const resumesApi = {
     apiClient.post<ResumeDTO>('/api/proxy/resumes', data),
 
   analyze: (id: string) =>
-    apiClient.post<ResumeDTO>(`/api/proxy/resumes/${id}/analyze`, { known_skills: [] }),
+    apiClient.post<{ resume_id: string; analysis_status: string }>(
+      `/api/proxy/resumes/${id}/analyze`,
+      { known_skills: [] },
+    ),
 
   addSkill: (id: string, data: { name: string; category: string; proficiency_level: string }) =>
     apiClient.post<ResumeDTO>(`/api/proxy/resumes/${id}/skills`, data),

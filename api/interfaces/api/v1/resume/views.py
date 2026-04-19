@@ -88,9 +88,16 @@ class ResumeViewSet(ViewSet):
         # Save immediately with keyword-based extraction (no AI wait)
         use_cases = get_resume_use_cases_no_ai()
         dto = use_cases["create"].execute(cmd)
-        # Queue full AI analysis in the background
+        # Mark pending before queuing so the 202 response reflects it and the
+        # frontend WebSocket hook activates immediately on the detail page.
+        ResumeRecord.objects.filter(resume_id=dto.resume_id).update(
+            analysis_status="pending", updated_at=timezone.now()
+        )
         analyze_resume_task.delay(dto.resume_id, str(request.user.id))
-        return Response(ResumeDTOSerializer(dto).data, status=status.HTTP_202_ACCEPTED)
+        return Response(
+            {**ResumeDTOSerializer(dto).data, "analysis_status": "pending"},
+            status=status.HTTP_202_ACCEPTED,
+        )
 
     def retrieve(self, request: Request, pk: str) -> Response:
         use_cases = get_resume_use_cases()
@@ -191,6 +198,13 @@ class ResumeViewSet(ViewSet):
         # Save immediately with keyword-based extraction (no AI wait)
         use_cases = get_resume_use_cases_no_ai()
         dto = use_cases["create"].execute(cmd)
-        # Queue full AI analysis in the background
+        # Mark pending before queuing so the 202 response reflects it and the
+        # frontend WebSocket hook activates immediately on the detail page.
+        ResumeRecord.objects.filter(resume_id=dto.resume_id).update(
+            analysis_status="pending", updated_at=timezone.now()
+        )
         analyze_resume_task.delay(dto.resume_id, str(request.user.id))
-        return Response(ResumeDTOSerializer(dto).data, status=status.HTTP_202_ACCEPTED)
+        return Response(
+            {**ResumeDTOSerializer(dto).data, "analysis_status": "pending"},
+            status=status.HTTP_202_ACCEPTED,
+        )

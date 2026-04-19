@@ -7,11 +7,22 @@ import type { ResumeDTO } from '@/types/api'
 
 const WS_BASE = process.env.NEXT_PUBLIC_DJANGO_WS_URL ?? 'ws://localhost:8000'
 
-/** Read the JWT access token from the browser cookie set at login. */
-function getAccessToken(): string | null {
-  if (typeof document === 'undefined') return null
-  const match = document.cookie.match(/(?:^|; )access_token=([^;]*)/)
-  return match ? decodeURIComponent(match[1]) : null
+/**
+ * Fetch the JWT access token from the server-side API route.
+ *
+ * The access_token cookie is HttpOnly — document.cookie cannot read it.
+ * /api/auth/ws-token reads it server-side and returns it as JSON so the
+ * client can attach it to the WebSocket URL as a query parameter.
+ */
+async function fetchAccessToken(): Promise<string | null> {
+  try {
+    const res = await fetch('/api/auth/ws-token')
+    if (!res.ok) return null
+    const { token } = await res.json() as { token: string | null }
+    return token ?? null
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -34,46 +45,54 @@ export function useResumeStatusSocket(resumeId: string, enabled: boolean) {
   useEffect(() => {
     if (!enabled || !resumeId) return
 
-    const token = getAccessToken()
-    if (!token) return
+    let ws: WebSocket | null = null
+    let cancelled = false
 
-    const ws = new WebSocket(`${WS_BASE}/ws/resume/${resumeId}/?token=${token}`)
+    fetchAccessToken().then((token) => {
+      if (!token || cancelled) return
 
-    ws.onopen = () => {
-      // Connection established — nothing to send, server-push only
-    }
+      ws = new WebSocket(`${WS_BASE}/ws/resume/${resumeId}/?token=${token}`)
 
-    ws.onmessage = (event: MessageEvent) => {
-      let data: { type: string; analysis_status: string; resume_id: string }
-      try {
-        data = JSON.parse(event.data as string)
-      } catch {
-        return
-      }
-
-      if (data.type !== 'status_update') return
-
-      const { analysis_status } = data
-
-      // Optimistically patch the cached status so the banner updates immediately
-      // without waiting for a full refetch round-trip.
-      qc.setQueryData<ResumeDTO>(resumeKeys.detail(resumeId), (old) =>
-        old ? { ...old, analysis_status: analysis_status as ResumeDTO['analysis_status'] } : old
-      )
-
-      if (analysis_status === 'done' || analysis_status === 'failed') {
-        // Refetch the full resume — skills/experiences/education are now populated
+      ws.onopen = () => {
+        // Guard against race condition: if the Celery task completed before
+        // the WebSocket connected, we missed the broadcast. Refetch once on
+        // open so we catch an already-terminal status.
         qc.invalidateQueries({ queryKey: resumeKeys.detail(resumeId) })
-        // Refresh the list so the card's "Analyzing…" pill disappears
-        qc.invalidateQueries({ queryKey: resumeKeys.all })
-        ws.close()
       }
-    }
 
-    ws.onerror = () => ws.close()
+      ws.onmessage = (event: MessageEvent) => {
+        let data: { type: string; analysis_status: string; resume_id: string }
+        try {
+          data = JSON.parse(event.data as string)
+        } catch {
+          return
+        }
+
+        if (data.type !== 'status_update') return
+
+        const { analysis_status } = data
+
+        // Optimistically patch the cached status so the banner updates immediately
+        // without waiting for a full refetch round-trip.
+        qc.setQueryData<ResumeDTO>(resumeKeys.detail(resumeId), (old) =>
+          old ? { ...old, analysis_status: analysis_status as ResumeDTO['analysis_status'] } : old
+        )
+
+        if (analysis_status === 'done' || analysis_status === 'failed') {
+          // Refetch the full resume — skills/experiences/education are now populated
+          qc.invalidateQueries({ queryKey: resumeKeys.detail(resumeId) })
+          // Refresh the list so the card's "Analyzing…" pill disappears
+          qc.invalidateQueries({ queryKey: resumeKeys.all })
+          ws?.close()
+        }
+      }
+
+      ws.onerror = () => ws?.close()
+    })
 
     return () => {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      cancelled = true
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
         ws.close()
       }
     }

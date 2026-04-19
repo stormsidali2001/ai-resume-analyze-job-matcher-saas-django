@@ -38,8 +38,14 @@ export function useAnalyzeResume(id: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => resumesApi.analyze(id),
-    onSuccess: (updated) => {
-      qc.setQueryData(resumeKeys.detail(id), updated)
+    onSuccess: () => {
+      // The endpoint returns 202 {resume_id, analysis_status: "pending"} — not a
+      // full ResumeDTO. Only patch the status field so the rest of the cache
+      // (contact info, skills, etc.) remains intact. The WebSocket hook will
+      // invalidate the full detail query once the task reaches a terminal state.
+      qc.setQueryData<ResumeDTO>(resumeKeys.detail(id), (old) =>
+        old ? { ...old, analysis_status: 'pending' } : old
+      )
     },
   })
 }

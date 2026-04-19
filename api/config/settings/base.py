@@ -20,6 +20,9 @@ DEBUG = False
 ALLOWED_HOSTS: list[str] = []
 
 INSTALLED_APPS = [
+    # daphne must be first — overrides runserver with ASGI-capable server
+    "daphne",
+    "channels",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -127,4 +130,47 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "AUTH_HEADER_TYPES": ("Bearer",),
+}
+
+# ---------------------------------------------------------------------------
+# ASGI / Django Channels
+# ---------------------------------------------------------------------------
+
+ASGI_APPLICATION = "config.asgi.application"
+
+# ---------------------------------------------------------------------------
+# Redis & Celery
+# ---------------------------------------------------------------------------
+
+REDIS_URL: str = config("REDIS_URL", default="redis://localhost:6379")
+
+# Django cache — Redis DB 1 (DB 0 reserved for Celery broker)
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": f"{REDIS_URL}/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+        "KEY_PREFIX": "resumeai",
+    }
+}
+
+# Celery broker + result backend
+CELERY_BROKER_URL: str = f"{REDIS_URL}/0"
+CELERY_RESULT_BACKEND: str = f"{REDIS_URL}/0"
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_TIME_LIMIT = 120        # hard kill after 2 min (Gemini can be slow)
+CELERY_TASK_SOFT_TIME_LIMIT = 90    # raise SoftTimeLimitExceeded at 90 s
+CELERY_TASK_ACKS_LATE = True        # only ack after the task succeeds
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # one task at a time per worker
+
+# Channel layers — Redis DB 2 (DB 0 = Celery, DB 1 = cache)
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": [f"{REDIS_URL}/2"]},
+    }
 }

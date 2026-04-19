@@ -38,6 +38,7 @@ class ResumeDTOSerializer(serializers.Serializer):
     resume_id = serializers.CharField()
     candidate_id = serializers.CharField()
     status = serializers.CharField()
+    analysis_status = serializers.CharField()
     raw_text_preview = serializers.CharField()
     contact_info = ContactInfoSerializer()
     skills = SkillSerializer(many=True)

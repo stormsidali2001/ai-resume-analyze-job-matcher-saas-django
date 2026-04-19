@@ -66,6 +66,7 @@ class ResumeDTO(BaseModel):
     resume_id: str
     candidate_id: str
     status: str
+    analysis_status: str
     raw_text_preview: str
     contact_info: ContactInfoDTO
     skills: list[SkillDTO]

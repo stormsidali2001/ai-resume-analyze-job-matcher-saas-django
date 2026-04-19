@@ -18,6 +18,10 @@ dependencies = [
     "faker>=24.0",
     "langchain-google-genai>=2.0",
     "pdfplumber>=0.11",
+    "celery>=5.3",
+    "django-redis>=5.4",
+    "channels[daphne]>=4.0",
+    "channels-redis>=4.1",
 ]
 
 [project.optional-dependencies]

@@ -42,6 +42,7 @@ def _resume_to_dto(resume: ResumeAggregate) -> ResumeDTO:
         resume_id=resume.resume_id,
         candidate_id=resume.candidate_id,
         status=resume.status,
+        analysis_status=resume.analysis_status,
         raw_text_preview=resume.raw_text.preview,
         contact_info=ContactInfoDTO(
             email=resume.contact_info.email,

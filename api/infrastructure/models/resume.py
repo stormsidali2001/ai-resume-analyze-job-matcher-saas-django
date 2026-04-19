@@ -17,6 +17,8 @@ class ResumeRecord(models.Model):
     contact_phone = models.CharField(max_length=50)
     contact_location = models.CharField(max_length=200)
     status = models.CharField(max_length=20)
+    # Tracks background AI analysis progress: idle | pending | processing | done | failed
+    analysis_status = models.CharField(max_length=20, default="idle")
     created_at = models.DateTimeField()
     updated_at = models.DateTimeField()
 

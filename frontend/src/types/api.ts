@@ -3,6 +3,7 @@
 
 export type UserRole = 'candidate' | 'recruiter'
 export type ResumeStatus = 'draft' | 'active' | 'archived'
+export type AnalysisStatus = 'idle' | 'pending' | 'processing' | 'done' | 'failed'
 export type JobStatus = 'draft' | 'published' | 'closed'
 export type ProficiencyLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert'
 export type EmploymentType =
@@ -61,6 +62,7 @@ export interface ResumeDTO {
   resume_id: string
   candidate_id: string
   status: ResumeStatus
+  analysis_status: AnalysisStatus
   raw_text_preview: string
   contact_info: ContactInfo
   skills: Skill[]

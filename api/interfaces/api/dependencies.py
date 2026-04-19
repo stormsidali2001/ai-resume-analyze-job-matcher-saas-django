@@ -64,6 +64,27 @@ def get_resume_use_cases() -> dict:
     }
 
 
+def get_resume_use_cases_no_ai() -> dict:
+    """
+    Returns use cases wired without an AI parser.
+
+    Used by the create/upload endpoints to save the resume immediately
+    (with fast keyword-based extraction) before queuing the Celery task
+    that runs the full Gemini analysis in the background.
+    """
+    repo = DjangoResumeRepository()
+    service = ResumeAnalysisService()
+    return {
+        "create": CreateResumeUseCase(repo, service, ai_parser=None),
+        "get": GetResumeUseCase(repo),
+        "list": ListCandidateResumesUseCase(repo),
+        "update_text": UpdateResumeTextUseCase(repo),
+        "analyze": AnalyzeResumeUseCase(repo, service, ai_parser=None),
+        "add_skill": AddSkillToResumeUseCase(repo),
+        "archive": ArchiveResumeUseCase(repo),
+    }
+
+
 def get_job_use_cases() -> dict:
     repo = DjangoJobRepository()
     return {

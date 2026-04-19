@@ -6,6 +6,7 @@ ResumeViewSet — each action delegates to the corresponding application use cas
 
 from __future__ import annotations
 
+from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view
 from drf_spectacular.types import OpenApiTypes
 from rest_framework import status
@@ -21,7 +22,9 @@ from application.resume.dtos import (
     CreateResumeCommand,
     UpdateResumeTextCommand,
 )
-from interfaces.api.dependencies import get_file_parser, get_resume_use_cases
+from infrastructure.models.resume import ResumeRecord
+from infrastructure.tasks.resume_tasks import analyze_resume_task
+from interfaces.api.dependencies import get_file_parser, get_resume_use_cases, get_resume_use_cases_no_ai
 from interfaces.api.v1.resume.serializers import (
     AddSkillRequestSerializer,
     AnalyzeResumeRequestSerializer,
@@ -41,9 +44,9 @@ from interfaces.api.v1.resume.serializers import (
     ),
     create=extend_schema(
         summary="Create a resume",
-        description="Upload raw resume text and contact info. Returns a DRAFT resume.",
+        description="Upload raw resume text and contact info. Returns a DRAFT resume immediately (202). AI analysis runs in the background — poll the resume until analysis_status is 'done'.",
         request=CreateResumeRequestSerializer,
-        responses={201: ResumeDTOSerializer},
+        responses={202: ResumeDTOSerializer},
         tags=["Resumes"],
     ),
     retrieve=extend_schema(
@@ -82,9 +85,12 @@ class ResumeViewSet(ViewSet):
             candidate_id=str(request.user.id),
             **ser.validated_data,
         )
-        use_cases = get_resume_use_cases()
+        # Save immediately with keyword-based extraction (no AI wait)
+        use_cases = get_resume_use_cases_no_ai()
         dto = use_cases["create"].execute(cmd)
-        return Response(ResumeDTOSerializer(dto).data, status=status.HTTP_201_CREATED)
+        # Queue full AI analysis in the background
+        analyze_resume_task.delay(dto.resume_id, str(request.user.id))
+        return Response(ResumeDTOSerializer(dto).data, status=status.HTTP_202_ACCEPTED)
 
     def retrieve(self, request: Request, pk: str) -> Response:
         use_cases = get_resume_use_cases()
@@ -106,24 +112,18 @@ class ResumeViewSet(ViewSet):
 
     @extend_schema(
         summary="Analyze resume",
-        description="Scan the resume text for known skills and attach them to the resume.",
-        request=AnalyzeResumeRequestSerializer,
-        responses={200: ResumeDTOSerializer},
+        description="Queue a background AI analysis of the resume. Returns 202 immediately. Poll the resume until analysis_status is 'done'.",
+        responses={202: OpenApiResponse(description="Analysis queued")},
         tags=["Resumes"],
     )
     @action(detail=True, methods=["post"], url_path="analyze")
     def analyze(self, request: Request, pk: str) -> Response:
-        ser = AnalyzeResumeRequestSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-
-        cmd = AnalyzeResumeCommand(
-            resume_id=pk,
-            candidate_id=str(request.user.id),
-            known_skills=ser.validated_data.get("known_skills", []),
+        # Mark as pending immediately so the client can start polling
+        ResumeRecord.objects.filter(resume_id=pk).update(
+            analysis_status="pending", updated_at=timezone.now()
         )
-        use_cases = get_resume_use_cases()
-        dto = use_cases["analyze"].execute(cmd)
-        return Response(ResumeDTOSerializer(dto).data)
+        analyze_resume_task.delay(pk, str(request.user.id))
+        return Response({"resume_id": pk, "analysis_status": "pending"}, status=status.HTTP_202_ACCEPTED)
 
     @extend_schema(
         summary="Add skill",
@@ -160,9 +160,9 @@ class ResumeViewSet(ViewSet):
 
     @extend_schema(
         summary="Upload resume PDF",
-        description="Upload a PDF file and contact info. Text is extracted and the resume is analyzed immediately.",
+        description="Upload a PDF file and contact info. Text is extracted and saved immediately (202). AI analysis runs in the background — poll the resume until analysis_status is 'done'.",
         request=ResumeFileUploadSerializer,
-        responses={201: ResumeDTOSerializer, 400: OpenApiResponse(description="Invalid file or unsupported type")},
+        responses={202: ResumeDTOSerializer, 400: OpenApiResponse(description="Invalid file or unsupported type")},
         tags=["Resumes"],
     )
     @action(detail=False, methods=["post"], url_path="upload", parser_classes=[MultiPartParser])
@@ -188,6 +188,9 @@ class ResumeViewSet(ViewSet):
             phone=ser.validated_data["phone"],
             location=ser.validated_data["location"],
         )
-        use_cases = get_resume_use_cases()
+        # Save immediately with keyword-based extraction (no AI wait)
+        use_cases = get_resume_use_cases_no_ai()
         dto = use_cases["create"].execute(cmd)
-        return Response(ResumeDTOSerializer(dto).data, status=status.HTTP_201_CREATED)
+        # Queue full AI analysis in the background
+        analyze_resume_task.delay(dto.resume_id, str(request.user.id))
+        return Response(ResumeDTOSerializer(dto).data, status=status.HTTP_202_ACCEPTED)

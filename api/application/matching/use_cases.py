@@ -6,8 +6,12 @@ Use case for matching a resume against a job posting.
 
 from __future__ import annotations
 
+import asyncio
+
+from asgiref.sync import sync_to_async
+
 from application.common.exceptions import NotFoundError, UnauthorizedError
-from application.matching.dtos import GapDTO, MatchRequestCommand, MatchResultDTO, SuggestionDTO
+from application.matching.dtos import BatchMatchCommand, GapDTO, MatchRequestCommand, MatchResultDTO, SuggestionDTO
 from domain.job.exceptions import JobNotFoundError
 from domain.job.repositories import JobRepository
 from domain.matching.services import ResumeJobMatchingService
@@ -55,6 +59,49 @@ class MatchResumeToJobUseCase:
         result = self._service.calculate_match(resume, job)
 
         # 4. Map → DTO
+        return self._to_dto(result)
+
+    async def execute_batch_async(self, cmd: BatchMatchCommand) -> list[MatchResultDTO]:
+        """
+        Score one resume against multiple jobs concurrently using asyncio.gather.
+
+        Each job fetch is wrapped with sync_to_async so Django ORM calls are
+        safely dispatched to a thread pool rather than blocking the event loop.
+        Jobs that cannot be found are silently skipped.
+        """
+        get_resume = sync_to_async(self._resume_repo.get_by_id, thread_sensitive=True)
+        get_job = sync_to_async(self._job_repo.get_by_id, thread_sensitive=True)
+
+        # Fetch the resume first (need it for the ownership check before we fan out)
+        try:
+            resume = await get_resume(cmd.resume_id)
+        except ResumeNotFoundError:
+            raise NotFoundError("Resume", cmd.resume_id)
+        if resume.candidate_id != cmd.candidate_id:
+            raise UnauthorizedError("Resume", cmd.resume_id)
+
+        # Fan out: fetch all jobs concurrently
+        job_results = await asyncio.gather(
+            *[get_job(jid) for jid in cmd.job_ids],
+            return_exceptions=True,
+        )
+
+        results: list[MatchResultDTO] = []
+        for job in job_results:
+            if isinstance(job, Exception):
+                # Skip jobs that were not found or raised errors
+                continue
+            result = self._service.calculate_match(resume, job)
+            results.append(self._to_dto(result))
+
+        # Return sorted by score descending so the best match is first
+        return sorted(results, key=lambda r: r.score, reverse=True)
+
+    # ---------------------------------------------------------------------------
+    # Shared mapper
+    # ---------------------------------------------------------------------------
+
+    def _to_dto(self, result) -> MatchResultDTO:
         return MatchResultDTO(
             match_id=result.match_id,
             resume_id=result.resume_id,

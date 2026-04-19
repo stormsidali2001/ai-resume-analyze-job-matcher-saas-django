@@ -54,3 +54,27 @@ class MatchRequestCommand(BaseModel):
         if not v or not v.strip():
             raise ValueError("Field must not be empty.")
         return v
+
+
+class BatchMatchCommand(BaseModel):
+    """Command to score one resume against multiple jobs concurrently."""
+
+    resume_id: str
+    candidate_id: str
+    job_ids: list[str]
+
+    @field_validator("resume_id", "candidate_id")
+    @classmethod
+    def must_not_be_blank(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Field must not be empty.")
+        return v
+
+    @field_validator("job_ids")
+    @classmethod
+    def validate_job_ids(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("job_ids must contain at least one job ID.")
+        if len(v) > 10:
+            raise ValueError("job_ids may contain at most 10 job IDs.")
+        return v

@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { SkillBadge } from '@/components/resume/SkillBadge'
 import { AddSkillForm } from '@/components/resume/AddSkillForm'
 import { useResume, useAnalyzeResume, useArchiveResume, useUpdateResume } from '@/lib/hooks/useResumes'
+import { useResumeStatusSocket } from '@/lib/hooks/useResumeStatusSocket'
 import { SKILL_CATEGORIES, CATEGORY_PRIORITY } from '@/lib/constants/skillCategories'
 import { formatMonths } from '@/lib/utils'
 import { ApiClientError } from '@/lib/api/client'
@@ -30,6 +31,12 @@ export default function ResumeDetailPage({ params }: { params: Promise<{ id: str
   const { mutate: analyze, isPending: isAnalyzing, error: analyzeError } = useAnalyzeResume(id)
   const { mutate: archive, isPending: isArchiving } = useArchiveResume(id)
   const updateResume = useUpdateResume(id)
+
+  // Open a WebSocket to receive real-time analysis_status updates from the
+  // Celery worker. The hook self-closes once a terminal state arrives.
+  const isAnalysisPending =
+    resume?.analysis_status === 'pending' || resume?.analysis_status === 'processing'
+  useResumeStatusSocket(id, !!resume && isAnalysisPending)
 
   const [confirmArchive, setConfirmArchive] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -147,6 +154,19 @@ export default function ResumeDetailPage({ params }: { params: Promise<{ id: str
         <p className="text-sm text-destructive">
           {analyzeError instanceof ApiClientError ? analyzeError.detail : 'Analysis failed. Please try again.'}
         </p>
+      )}
+
+      {/* AI analysis status banner */}
+      {(resume.analysis_status === 'pending' || resume.analysis_status === 'processing') && (
+        <div className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300">
+          <Loader2 size={14} className="animate-spin shrink-0" />
+          AI analysis in progress — skills and experience will appear shortly
+        </div>
+      )}
+      {resume.analysis_status === 'failed' && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
+          AI analysis failed. Click <strong>Re-analyze</strong> to try again.
+        </div>
       )}
 
       {/* Contact info */}

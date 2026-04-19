@@ -36,3 +36,16 @@ class MatchResultDTOSerializer(serializers.Serializer):
 class MatchRequestSerializer(serializers.Serializer):
     resume_id = serializers.CharField()
     job_id = serializers.CharField()
+
+
+class BatchMatchRequestSerializer(serializers.Serializer):
+    resume_id = serializers.CharField()
+    job_ids = serializers.ListField(
+        child=serializers.CharField(),
+        min_length=1,
+        max_length=10,
+    )
+
+
+class BatchMatchResultSerializer(serializers.Serializer):
+    results = MatchResultDTOSerializer(many=True)

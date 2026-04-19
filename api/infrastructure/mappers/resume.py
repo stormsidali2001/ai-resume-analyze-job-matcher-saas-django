@@ -33,6 +33,7 @@ class ResumeMapper:
         )
         # Restore internal mutable state directly to avoid re-running validations
         resume._status = record.status
+        resume._analysis_status = record.analysis_status
         resume._created_at = record.created_at
         resume._updated_at = record.updated_at
 
@@ -75,6 +76,7 @@ class ResumeMapper:
         record.contact_phone = resume.contact_info.phone
         record.contact_location = resume.contact_info.location
         record.status = resume.status
+        record.analysis_status = resume.analysis_status
         record.created_at = resume.created_at
         record.updated_at = resume.updated_at
 

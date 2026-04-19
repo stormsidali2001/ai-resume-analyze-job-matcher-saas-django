@@ -50,6 +50,7 @@ class ResumeAggregate:
         experiences: list[Experience] | None = None,
         education: list[Education] | None = None,
         status: str = STATUS_DRAFT,
+        analysis_status: str = "idle",
         created_at: datetime | None = None,
         updated_at: datetime | None = None,
     ) -> None:
@@ -70,6 +71,7 @@ class ResumeAggregate:
         self._experiences: list[Experience] = list(experiences or [])
         self._education: list[Education] = list(education or [])
         self._status = status
+        self._analysis_status = analysis_status
         self._created_at = created_at or datetime.now(timezone.utc)
         self._updated_at = updated_at or datetime.now(timezone.utc)
 
@@ -111,6 +113,10 @@ class ResumeAggregate:
     @property
     def status(self) -> str:
         return self._status
+
+    @property
+    def analysis_status(self) -> str:
+        return self._analysis_status
 
     @property
     def created_at(self) -> datetime:

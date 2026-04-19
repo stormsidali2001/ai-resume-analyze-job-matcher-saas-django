@@ -6,6 +6,7 @@ JobViewSet — list/retrieve are public; write actions require recruiter role.
 
 from __future__ import annotations
 
+from django.core.cache import cache
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import status
@@ -22,6 +23,9 @@ from interfaces.api.v1.job.serializers import (
     CreateJobRequestSerializer,
     JobDTOSerializer,
 )
+
+_PUBLISHED_JOBS_KEY = "published_jobs"
+_PUBLISHED_JOBS_TTL = 5 * 60  # 5 minutes
 
 
 @extend_schema_view(
@@ -60,9 +64,15 @@ class JobViewSet(ViewSet):
         return [IsAuthenticated()]
 
     def list(self, request: Request) -> Response:
+        cached = cache.get(_PUBLISHED_JOBS_KEY)
+        if cached is not None:
+            return Response(cached)
+
         use_cases = get_job_use_cases()
         dtos = use_cases["list_published"].execute()
-        return Response(JobDTOSerializer(dtos, many=True).data)
+        data = JobDTOSerializer(dtos, many=True).data
+        cache.set(_PUBLISHED_JOBS_KEY, data, timeout=_PUBLISHED_JOBS_TTL)
+        return Response(data)
 
     def create(self, request: Request) -> Response:
         ser = CreateJobRequestSerializer(data=request.data)
@@ -142,6 +152,7 @@ class JobViewSet(ViewSet):
     def publish(self, request: Request, pk: str) -> Response:
         use_cases = get_job_use_cases()
         dto = use_cases["publish"].execute(pk, str(request.user.id))
+        cache.delete(_PUBLISHED_JOBS_KEY)
         return Response(JobDTOSerializer(dto).data)
 
     @extend_schema(
@@ -154,4 +165,5 @@ class JobViewSet(ViewSet):
     def close(self, request: Request, pk: str) -> Response:
         use_cases = get_job_use_cases()
         dto = use_cases["close"].execute(pk, str(request.user.id))
+        cache.delete(_PUBLISHED_JOBS_KEY)
         return Response(JobDTOSerializer(dto).data)

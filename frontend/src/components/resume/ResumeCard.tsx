@@ -1,9 +1,9 @@
 import Link from 'next/link'
-import { MapPin } from 'lucide-react'
+import { Loader2, MapPin } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { cn, formatMonths } from '@/lib/utils'
-import type { ResumeDTO } from '@/types/api'
+import type { AnalysisStatus, ResumeDTO } from '@/types/api'
 
 const statusBorder: Record<string, string> = {
   draft: 'border-l-4 border-l-amber-400',
@@ -15,6 +15,23 @@ const statusVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
   draft: 'outline',
   active: 'default',
   archived: 'secondary',
+}
+
+function AnalysisPill({ status }: { status: AnalysisStatus }) {
+  if (status === 'done' || status === 'idle') return null
+  if (status === 'failed') {
+    return (
+      <span className="flex items-center gap-1 text-xs text-destructive">
+        Analysis failed
+      </span>
+    )
+  }
+  return (
+    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+      <Loader2 size={10} className="animate-spin" />
+      Analyzing…
+    </span>
+  )
 }
 
 export function ResumeCard({ resume }: { resume: ResumeDTO }) {
@@ -39,6 +56,7 @@ export function ResumeCard({ resume }: { resume: ResumeDTO }) {
             {resume.raw_text_preview}
           </p>
           <div className="flex flex-wrap items-center gap-2">
+            <AnalysisPill status={resume.analysis_status} />
             {resume.skills.length > 0 && (
               <Badge variant="secondary" className="text-xs font-normal">
                 {resume.skills.length} skill{resume.skills.length !== 1 ? 's' : ''}

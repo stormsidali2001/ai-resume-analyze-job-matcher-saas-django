@@ -167,6 +167,12 @@ CELERY_TASK_SOFT_TIME_LIMIT = 90    # raise SoftTimeLimitExceeded at 90 s
 CELERY_TASK_ACKS_LATE = True        # only ack after the task succeeds
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # one task at a time per worker
 
+# ---------------------------------------------------------------------------
+# Elasticsearch
+# ---------------------------------------------------------------------------
+
+ELASTICSEARCH_URL: str = config("ELASTICSEARCH_URL", default="http://localhost:9200")
+
 # Channel layers — Redis DB 2 (DB 0 = Celery, DB 1 = cache)
 CHANNEL_LAYERS = {
     "default": {

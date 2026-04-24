@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -74,7 +74,17 @@ class _ExperienceOut(BaseModel):
 class _EducationOut(BaseModel):
     degree: str = Field(description="Degree or qualification name")
     institution: str = Field(description="University, college, or school name")
-    graduation_year: int = Field(description="Year of graduation or expected graduation")
+    graduation_year: int = Field(
+        default=2000,
+        description="Year of graduation or expected graduation. Use 2000 if unknown.",
+    )
+
+    @field_validator("graduation_year")
+    @classmethod
+    def clamp_year(cls, v: int) -> int:
+        if v < 1900 or v > 2100:
+            return 2000
+        return v
 
 
 class _ParsedOut(BaseModel):

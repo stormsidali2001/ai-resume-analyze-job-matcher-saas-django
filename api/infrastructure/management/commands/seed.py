@@ -32,6 +32,7 @@ from application.resume.dtos import AddSkillCommand, CreateResumeCommand
 from application.resume.use_cases import AddSkillToResumeUseCase, CreateResumeUseCase  # AddSkill used by CandidateSeeder
 from application.user.dtos import CreateUserCommand
 from application.user.use_cases import CreateUserUseCase
+from domain.resume.exceptions import DuplicateSkillError
 from domain.user.exceptions import UserAlreadyExistsError
 from interfaces.api.dependencies import get_job_use_cases, get_resume_use_cases, get_user_use_cases
 
@@ -432,7 +433,10 @@ class CandidateSeeder:
                 category=skill["category"],
                 proficiency_level=skill["proficiency_level"],
             )
-            self._add_skill.execute(cmd)
+            try:
+                self._add_skill.execute(cmd)
+            except DuplicateSkillError:
+                pass  # already extracted by keyword parser — skip
 
 
 class RecruiterSeeder:

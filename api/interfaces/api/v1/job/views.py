@@ -153,6 +153,8 @@ class JobViewSet(ViewSet):
         use_cases = get_job_use_cases()
         dto = use_cases["publish"].execute(pk, str(request.user.id))
         cache.delete(_PUBLISHED_JOBS_KEY)
+        from infrastructure.tasks.search_tasks import index_job_task
+        index_job_task.delay(pk)
         return Response(JobDTOSerializer(dto).data)
 
     @extend_schema(
@@ -166,4 +168,6 @@ class JobViewSet(ViewSet):
         use_cases = get_job_use_cases()
         dto = use_cases["close"].execute(pk, str(request.user.id))
         cache.delete(_PUBLISHED_JOBS_KEY)
+        from infrastructure.tasks.search_tasks import delete_job_from_index_task
+        delete_job_from_index_task.delay(pk)
         return Response(JobDTOSerializer(dto).data)

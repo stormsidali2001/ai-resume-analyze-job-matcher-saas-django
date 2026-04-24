@@ -97,6 +97,13 @@ def analyze_resume_task(self, resume_id: str, candidate_id: str) -> dict:
         _set_analysis_status(resume_id, "done")
         _broadcast_status(resume_id, "done")
 
+        # Index the resume in Elasticsearch so it appears in recruiter RAG chat.
+        try:
+            from infrastructure.tasks.search_tasks import index_resume_task
+            index_resume_task.delay(resume_id)
+        except Exception:
+            pass  # indexing failure must never break analysis
+
         # Invalidate any cached match results for this resume so re-analysis
         # is reflected immediately on the next match request.
         try:

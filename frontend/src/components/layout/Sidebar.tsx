@@ -2,17 +2,19 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { FileText, Briefcase } from 'lucide-react'
+import { FileText, Briefcase, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 
 const candidateNav = [
   { href: '/resumes', label: 'Resumes', icon: FileText },
   { href: '/jobs', label: 'Jobs', icon: Briefcase },
+  { href: '/chat', label: 'AI Chat', icon: MessageSquare },
 ]
 
 const recruiterNav = [
   { href: '/recruiter/jobs', label: 'My Jobs', icon: Briefcase },
+  { href: '/chat', label: 'AI Chat', icon: MessageSquare },
 ]
 
 function UserFooter() {

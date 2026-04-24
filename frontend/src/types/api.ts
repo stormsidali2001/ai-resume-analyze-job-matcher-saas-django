@@ -162,6 +162,23 @@ export interface MatchRequest {
   job_id: string
 }
 
+// Chat
+export interface ChatSource {
+  id: string
+  title: string
+  subtitle: string
+  detail: string
+}
+
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  sources?: ChatSource[]
+  isStreaming?: boolean
+  isError?: boolean
+}
+
 // API error
 export interface ApiError {
   detail: string | Record<string, unknown>[]
